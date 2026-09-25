@@ -152,6 +152,7 @@ class Agent:
 
         # TODO(1.1.a): Add machinery to maintain agent state as it takes actions
         # and observes the results.
+        self.prior_messages = []
 
     def load_skills(self, skills_path: Path) -> dict[str, dict[str, str]]:
         """Load the skill folders exposed to this agent."""
@@ -227,7 +228,22 @@ class Agent:
 
         # You want to be careful about which attributes of the class you modify
         # here as they may also be handled by the subclasses.
-        raise NotImplementedError
+        if len(self.prior_messages) == 0:
+            self.prior_messages = [
+                {
+                    'role': 'system',
+                    'content': self.system_prompt
+                }
+            ]
+
+        self.prior_messages.append(
+            {
+                'role': 'user',
+                'content': self.task_prompt
+            }
+        )
+
+        return deepcopy(self.prior_messages)
 
     def estimate_active_prompt_tokens(self) -> int:
         """Estimate the next prompt, calibrated by the provider's latest usage."""

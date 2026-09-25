@@ -48,6 +48,16 @@ class CodeAgent(Agent):
 
         # TODO(1.1.b): Construct the system prompt and task_prompt. These
         # should be usable by the `Agent.build_prompt` method.
+        
+        self.system_prompt = f"""You are an experienced software developer and your are responsible for coding tasks on the following system.
+        <system_information>
+        {
+            "machine": {self.env.machine},
+            "release": {self.env.release},
+            "system": {self.env.system},
+            "version": {self.env.version}
+        }
+        </system_information>"""
         # TODO(1.4): If any skills are available to the agent, make their
         # descriptions/metadata available to the agent in the prompt.
 
