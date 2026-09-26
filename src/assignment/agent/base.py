@@ -243,7 +243,7 @@ class Agent:
             }
         )
 
-        return deepcopy(self.prior_messages)
+        return self.prior_messages
 
     def estimate_active_prompt_tokens(self) -> int:
         """Estimate the next prompt, calibrated by the provider's latest usage."""
@@ -347,12 +347,43 @@ class Agent:
             # by setting `Agent.finished`. If the agent exceeds the
             # `step_limit`, raise `StepLimitError`.
 
+
             # TODO(2.2) Call `maybe_compact_context()` before each new action
             # request in your shared loop. It already estimates active tokens
             # and handles the threshold, and tracks compaction events for
             # logging.
+            while not self.finished:
+                message = self.query_language_model()
+                tool_calls = message.get("tool_calls", [])
+                if tool_calls:
+                    self.prior_messages.append(
+                        {
+                            'role': 'assistant',
+                            'tool_calls': tool_calls
+                        }
+                    )
+                else:
+                    self.prior_messages.append(
+                        {
+                            'role': 'assistant',
+                            'content': message
+                        }
+                    )       
+                observations = self.execute_tool_calls(tool_calls)
 
-            raise NotImplementedError
+                for obs, call in zip(observations, tool_calls):
+                    tool_name = call.get("function", {}).get("name", "unknown")
+                    self.prior_messages.append(
+                        {
+                            'role': 'tool',
+                            'content': obs,
+                            'name': tool_name
+                        }
+                    )
+                    
+                if self.steps_taken > self.step_limit:
+                    raise StepLimitError()
+
         finally:
             # This block is provided infrastructure. Do not modify it: a
             # trajectory is required even when a run fails.
