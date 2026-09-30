@@ -45,6 +45,7 @@ class CodeAgent(Agent):
 
         # TODO(Part 1.3): Make the `execute` and `send_message` tools available
         # to the agent.
+        self.tools = [EXECUTE_TOOL, SEND_MESSAGE_TOOL]
 
         # TODO(1.1.b): Construct the system prompt and task_prompt. These
         # should be usable by the `Agent.build_prompt` method.
@@ -60,6 +61,10 @@ class CodeAgent(Agent):
         </system_information>"""
         # TODO(1.4): If any skills are available to the agent, make their
         # descriptions/metadata available to the agent in the prompt.
+        if self.skills:
+            skill_prompt = [v['metadata'] for v in self.skills.vlaues()]
+            skill_prompt = "\n".join(skill_prompt)
+            self.system_prompt += '\n Available Skills: \n' + skill_prompt
 
     def execute_tool_calls(
         self, tool_calls: list[dict[str, Any]]
@@ -70,4 +75,41 @@ class CodeAgent(Agent):
         # one message per call (there may be multiple tool calls in one agent
         # response!). Malformed JSON and unknown tools must become recoverable
         # observations relayed to the agent instead of exceptions.
-        raise NotImplementedError
+        result = []
+        for call in tool_calls:
+            func_name = call.get("name")
+            if func_name is None:
+                result.append({
+                    'role': 'tool',
+                    'content': 'Missing function name',
+                    'tool_call_id': call.get("id")
+                })
+            else:
+                arguments = call.get("function", {}).get("arguments", {})
+                if func_name == "execute":
+                    content = self.env.execute(
+                        command=arguments.get("command", ""),
+                        timeout=arguments.get("timeout"),
+                        cwd=arguments.get("cwd"),
+                        env=arguments.get("env"),
+                        shell=arguments.get("shell", True)
+                    )
+                elif func_name == "send_message":
+                    content = arguments.get("summary", "")
+                elif func_name == "invoke_skill":
+                    skill_name = arguments.get("name")
+                    if skill_name is None:
+                        content = "skill name is missing"
+                    else:
+                        self.skills_path
+                else:
+                    content = f"Unknown function: {func_name}"
+
+                result.append({
+                    'role': 'tool',
+                    'content': content,
+                    'tool_call_id': call.id,
+                    'name': func_name
+                })
+
+        return result

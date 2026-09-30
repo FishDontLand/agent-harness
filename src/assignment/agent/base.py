@@ -11,6 +11,7 @@ import json
 import logging
 import math
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -165,7 +166,42 @@ class Agent:
         # ``content`` of the skill file for ``invoke_skill``. Reject duplicate
         # names and malformed or missing frontmatter with a clear
         # ``ValueError``.
-        raise NotImplementedError
+        def get_skill_file(folder: Path):
+            for path in folder.iterdir():
+                if path.is_file() and path.name.lower == "skill.md":
+                    return path
+                if path.is_dir():
+                    skill_found = get_skill_file(path)
+                    if skill_found is not None:
+                        return skill_found
+            return None
+
+        skill_dict = dict()
+        if self.skills_path and self.skills_path.is_dir():
+            for path in self.skills_path.iterdir():
+                if path.is_dir():
+                    skill_file = get_skill_file(path)
+                    if skill_file:
+                        with open(skill_file, 'r') as f:
+                            body = f.read()
+                            frontmatter = re.search('---(.*)---', body)
+                            if frontmatter is None:
+                                raise ValueError("missing frontmatter")
+
+                            frontmatter = frontmatter.group(1)
+                            skill_name = re.search('name:(.*?)\n', frontmatter)
+                            if skill_name is None:
+                                raise ValueError("missing skill name")
+                            skill_name = skill_name.group(1).strip()
+                            if skill_name in skill_dict:
+                                raise ValueError(f"duplicate skill: {skill_name}")
+                            skill_dict[skill_name] = {
+                                'metadata': frontmatter,
+                                'content': body
+                            }
+
+        return skill_dict
+
 
     def query_language_model(self) -> dict[str, Any]:
         """Send one tool-enabled Chat Completions request and normalize it."""
@@ -362,25 +398,19 @@ class Agent:
                             'tool_calls': tool_calls
                         }
                     )
+                    observations = self.execute_tool_calls(tool_calls)
+                    for obs in observations:
+                        self.prior_messages.append(obs)
+                                    
                 else:
                     self.prior_messages.append(
                         {
                             'role': 'assistant',
                             'content': message
                         }
-                    )       
-                observations = self.execute_tool_calls(tool_calls)
-
-                for obs, call in zip(observations, tool_calls):
-                    tool_name = call.get("function", {}).get("name", "unknown")
-                    self.prior_messages.append(
-                        {
-                            'role': 'tool',
-                            'content': obs,
-                            'name': tool_name
-                        }
-                    )
-                    
+                    )  
+                    self.finished = True
+    
                 if self.steps_taken > self.step_limit:
                     raise StepLimitError()
 
